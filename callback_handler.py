@@ -1,109 +1,261 @@
 from telebot.types import CallbackQuery
 import logging
-from bot_main import (
-    show_admin_menu, request_access, show_schema_options, 
+import csv
+from redis_con import redis_client
+from bot_admin import (
+    show_admin_menu, show_schema_options, 
     request_user_for_grant, choose_permission, 
     grant_usage_to_schema, list_objects, 
     choose_permissions, toggle_permission,
     request_user_for_permissions, grant_permissions, 
-    delete_message, edit_to_welcome, send_welcome
+    delete_message, edit_to_welcome, send_welcome, choose_user 
 )
+from bot_access import (
+    show_schema_access_options, request_access,
+    request_user_for_grant_r
+)
+
+def load_authorized_users(filepath='authorized_users.csv'):
+    authorized_user_ids = []
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            authorized_user_ids.append(int(row['user_id']))
+    return authorized_user_ids
+
+AUTHORIZED_USER_IDS = load_authorized_users()
+
+def is_authorized(user_id):
+    return user_id in AUTHORIZED_USER_IDS
 
 def callback_inline(bot, call: CallbackQuery):
     try:
+        global parts
+        ad_pref = '_r'
+        parts = call.data.split('|')
         logging.info(f"Получен вызов с данными: {call.data}")
+        logging.info(f"Части данных: {parts}")
 
+        # ____АДМИНКА____
+        # Блок обработки главного меню
         if call.data == 'admin_menu':
-            show_admin_menu(bot, call.message)
-        elif call.data == 'request_access':
-            request_access(bot, call.message)
+            if is_authorized(call.from_user.id):
+                logging.info("_______▲▲▲_______Вызвана функция show_admin_menu_______▲▲▲_______")
+                show_admin_menu(bot, call.message)
+            else:
+                bot.answer_callback_query(callback_query_id=call.id, text="У вас нет прав доступа к админке.", show_alert=True)
+                logging.warning(f"Пользователь {call.from_user.id} не авторизован для доступа к админке")
         elif call.data == 'back_main':
+            logging.info("_______▲▲▲_______Вызвана функция delete_message и send_welcome_______▲▲▲_______")
             delete_message(bot, call.message)
             send_welcome(bot, call.message)
-        elif call.data.startswith('schema|'):
-            schema_name = call.data.split('|')[1]
-            show_schema_options(bot, call.message, schema_name, call)
-        elif call.data.startswith('grant|'):
-            schema_name = call.data.split('|')[1]
-            request_user_for_grant(bot, call, schema_name)
-        elif call.data.startswith('choose_perm|'):
-            parts = call.data.split('|')
+
+        # Блок обработки схем
+        elif parts[0] == 'schema':
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция show_schema_options с schema_id: {schema_id}_______▲▲▲_______")
+                show_schema_options(bot, call.message, schema_id, call)
+
+        # Блок обработки назначения прав
+        elif parts[0] == 'grant':
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_grant с schema_id: {schema_id}_______▲▲▲_______")
+                request_user_for_grant(bot, call, schema_id)
+        elif parts[0] == 'choose_perm':
             if len(parts) == 3:
-                schema_name = parts[1]
-                user_to_grant = parts[2]
-                choose_permission(bot, call, schema_name, user_to_grant)
-        elif call.data.startswith('grant_permission|'):
-            parts = call.data.split('|')
+                schema_id = parts[1]
+                user_id = parts[2]
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_permission с schema_id: {schema_id}, user_id: {user_id}_______▲▲▲_______")
+                choose_permission(bot, call, schema_id, user_id)
+        elif parts[0] == 'grant_permission':
+            logging.info(f"Обработка grant_permission: parts = {parts}")
             if len(parts) == 4:
                 permission_type = parts[1]
-                schema_name = parts[2]
-                user_to_grant = parts[3]
-                grant_usage_to_schema(bot, call, schema_name, user_to_grant, permission_type)
-        elif call.data.startswith('tables|') or call.data.startswith('views|'):
-            parts = call.data.split('|')
+                schema_id = parts[2]
+                user_id = parts[3]
+                logging.info(f"_______▲▲▲_______Вызвана функция grant_usage_to_schema с schema_id: {schema_id}, user_id: {user_id}, permission_type: {permission_type}_______▲▲▲_______")
+                grant_usage_to_schema(bot, call, schema_id, user_id, permission_type)
+
+        # Блок обработки объектов
+        elif parts[0] == 'tables' or parts[0] == 'views':
             if len(parts) == 3:
-                schema_name = parts[1]
+                schema_id = parts[1]
                 page = int(parts[2])
-                object_type = 'tables' if call.data.startswith('tables|') else 'views'
-                list_objects(bot, call.message, schema_name, page, call, object_type)
-        elif call.data.startswith('choose_table|') or call.data.startswith('choose_view|'):
-            parts = call.data.split('|')
+                object_type = 'tables' if parts[0] == 'tables' else 'views'
+                logging.info(f"_______▲▲▲_______Вызвана функция list_objects с schema_id: {schema_id}, page: {page}, object_type: {object_type}_______▲▲▲_______")
+                list_objects(bot, call.message, schema_id, page, call, object_type)
+        elif parts[0] == 'choose_table' or parts[0] == 'choose_view':
             if len(parts) == 3:
-                schema_name = parts[1]
-                object_name = parts[2]
-                object_type = 'table' if 'choose_table' in call.data else 'view'
-                choose_permissions(bot, call, schema_name, object_name, object_type)
-        elif call.data.startswith('toggle_perm|'):
-            parts = call.data.split('|')
+                schema_id = parts[1]
+                object_id = parts[2]
+                object_type = 'table' if parts[0] == 'choose_table' else 'view'
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
+                choose_permissions(bot, call, schema_id, object_id, object_type)
+
+        # Блок переключения прав
+        elif parts[0] == 'toggle_perm':
             if len(parts) == 5:
-                schema_name = parts[1]
-                object_name = parts[2]
+                schema_id = parts[1]
+                object_id = parts[2]
                 object_type = parts[3]
                 permission = parts[4]
-                toggle_permission(bot, call, schema_name, object_name, object_type, permission)
-        elif call.data.startswith('choose_user|'):
-            parts = call.data.split('|')
+                logging.info(f"_______▲▲▲_______Вызвана функция toggle_permission с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, permission: {permission}_______▲▲▲_______")
+                toggle_permission(bot, call, schema_id, object_id, object_type, permission)
+
+        # Блок выбора пользователя
+        elif parts[0] == 'choose_user':
             if len(parts) == 4:
-                schema_name = parts[1]
-                object_name = parts[2]
+                schema_id = parts[1]
+                object_id = parts[2]
                 object_type = parts[3]
-                request_user_for_permissions(bot, call, schema_name, object_name, object_type)
-        elif call.data.startswith('grant_table_perm|') or call.data.startswith('grant_view_perm|'):
-            parts = call.data.split('|')
-            if len(parts) == 4:
-                schema_name = parts[1]
-                object_name = parts[2]
-                user_to_grant = parts[3]
-                object_type = 'table' if 'grant_table_perm' in call.data else 'view'
-                grant_permissions(bot, call, schema_name, object_name, user_to_grant, object_type)
-        elif call.data.startswith('prev_user_perm|') or call.data.startswith('next_user_perm|'):
-            parts = call.data.split('|')
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_user с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
+                choose_user(bot, call, schema_id, object_id, object_type)
+
+        # Блок назначения прав пользователю для объекта
+        elif parts[0] == 'grant_table_perm' or parts[0] == 'grant_view_perm':
             if len(parts) == 5:
-                schema_name = parts[1]
-                object_name = parts[2]
+                schema_id = parts[1]
+                object_id = parts[2]
+                user_id = parts[3]
+                object_type = parts[4]
+                logging.info(f"_______▲▲▲_______Вызвана функция grant_permissions с schema_id: {schema_id}, object_id: {object_id}, user_id: {user_id}, object_type: {object_type}_______▲▲▲_______")
+                grant_permissions(bot, call, schema_id, object_id, user_id, object_type)
+
+        # Блок обработки пагинации для прав пользователя
+        elif parts[0] == 'prev_user_perm' or parts[0] == 'next_user_perm':
+            if len(parts) == 5:
+                schema_id = parts[1]
+                object_id = parts[2]
                 object_type = parts[3]
                 page = int(parts[4])
-                request_user_for_permissions(bot, call, schema_name, object_name, object_type, page)
-        elif call.data.startswith('prev_users|') or call.data.startswith('next_users|'):
-            parts = call.data.split('|')
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, page: {page}_______▲▲▲_______")
+                request_user_for_permissions(bot, call, schema_id, object_id, object_type, page)
+        elif parts[0] == 'prev_users' or parts[0] == 'next_users':
             if len(parts) == 3:
-                schema_name = parts[1]
+                schema_id = parts[1]
                 page = int(parts[2])
-                request_user_for_grant(bot, call, schema_name, page)
-        elif call.data == 'back_main':
-            delete_message(bot, call.message)
-            send_welcome(bot, call.message)
-        elif call.data.startswith('back|'):
-            schema_name = call.data.split('|')[1]
-            show_schema_options(bot, call.message, schema_name, call)
-        elif call.data.startswith('choose_table_prev|') or call.data.startswith('choose_table_next|') or \
-             call.data.startswith('choose_view_prev|') or call.data.startswith('choose_view_next|'):
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_grant с schema_id: {schema_id}, page: {page}_______▲▲▲_______")
+                request_user_for_grant(bot, call, schema_id, page)
+
+        # Блок возврата к предыдущему меню
+        elif parts[0] == 'back':
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция show_schema_options с schema_id: {schema_id}_______▲▲▲_______")
+                show_schema_options(bot, call.message, schema_id, call)
+
+        # Блок обработки кнопок пагинации
+        elif parts[0] == 'choose_table_prev' or parts[0] == 'choose_table_next' or \
+             parts[0] == 'choose_view_prev' or parts[0] == 'choose_view_next':
             logging.info(f"Обрабатываем кнопку пагинации: {call.data}")
-            parts = call.data.split('|')
             if len(parts) == 3:
-                schema_name = parts[1]
+                schema_id = parts[1]
                 page = int(parts[2])
-                object_type = 'tables' if 'choose_table' in call.data else 'views'
-                list_objects(bot, call.message, schema_name, page, call, object_type)
+                object_type = 'tables' if 'choose_table' in parts[0] else 'views'
+                logging.info(f"_______▲▲▲_______Вызвана функция list_objects с schema_id: {schema_id}, page: {page}, object_type: {object_type}_______▲▲▲_______")
+                list_objects(bot, call.message, schema_id, page, call, object_type)
+
+        # Блок обработки дополнительной навигации для прав
+        elif parts[0] == 'choose_perm_next' or parts[0] == 'choose_perm_prev':
+            if len(parts) == 3:
+                schema_id = parts[1]
+                page = int(parts[2])
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_grant с schema_id: {schema_id}, page: {page}_______▲▲▲_______")
+                request_user_for_grant(bot, call, schema_id, page)
+
+        elif parts[0] == 'grant_view_perm_next' or parts[0] == 'grant_view_perm_prev' or \
+             parts[0] == 'grant_table_perm_next' or parts[0] == 'grant_table_perm_prev':
+            if len(parts) == 5:
+                schema_id = parts[1]
+                object_id = parts[2]
+                page = int(parts[3])
+                object_type = parts[4]
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, page: {page}_______▲▲▲_______")
+                request_user_for_permissions(bot, call, schema_id, object_id, object_type, page)
+        
+        # ____ЗАПРОС ПОЛЬЗОВАТЕЛЯ____
+        # Во многих запросах передается ad_pref, нужен для обращения к тем же функциям, что пользуют админки, но немного разделить функционал в конце
+    
+        elif call.data == 'request_access':
+            logging.info("_______▲▲▲_______Вызвана функция request_access_______▲▲▲_______")
+            request_access(bot, call.message)
+
+        elif call.data.startswith('schema_req|'):
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция show_schema_access_options с schema_id: {schema_id}_______▲▲▲_______")
+                show_schema_access_options(bot, call.message, schema_id, call)
+        
+        elif parts[0] == 'grant_r':
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_grant_r с schema_id: {schema_id}_______▲▲▲_______")
+                request_user_for_grant_r(bot, call, schema_id)
+
+        elif parts[0] == 'choose_perm_r_next' or parts[0] == 'choose_perm_r_prev':
+            if len(parts) == 3:
+                schema_id = parts[1]
+                page = int(parts[2])
+                logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_grant_r с schema_id: {schema_id}, page: {page}_______▲▲▲_______")
+                request_user_for_grant_r(bot, call, schema_id, page)
+
+        elif parts[0] == 'choose_perm_r':
+            if len(parts) == 3:
+                schema_id = parts[1]
+                user_id = parts[2]
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_permission с schema_id: {schema_id}, user_id: {user_id}_______▲▲▲_______")
+                choose_permission(bot, call, schema_id, user_id, ad_pref = ad_pref)
+
+        elif parts[0] == 'grant_permission_r':
+            logging.info(f"Обработка grant_permission_r: parts = {parts}")
+            if len(parts) == 4:
+                permission_type = parts[1]
+                schema_id = parts[2]
+                user_id = parts[3]
+                bot.answer_callback_query(call.id, "Запросы пока не готовы.")
+                request_access(bot, call.message)
+                # Не доделаный запорс!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        elif parts[0] == 'tables_r' or parts[0] == 'views_r':
+            if len(parts) == 3:
+                schema_id = parts[1]
+                page = int(parts[2])
+                object_type = 'tables' if parts[0] == 'tables' else 'views'
+                logging.info(f"_______▲▲▲_______Вызвана функция list_objects с schema_id: {schema_id}, page: {page}, object_type: {object_type}_______▲▲▲_______")
+                list_objects(bot, call.message, schema_id, page, call, object_type, ad_pref = ad_pref)
+
+        elif parts[0] == 'back_r':
+            if len(parts) == 2:
+                schema_id = parts[1]
+                logging.info(f"_______▲▲▲_______Вызвана функция show_schema_access_options с schema_id: {schema_id}_______▲▲▲_______")
+                show_schema_access_options(bot, call.message, schema_id, call)
+
+        elif parts[0] == 'choose_table_r' or parts[0] == 'choose_view_r':
+            if len(parts) == 3:
+                schema_id = parts[1]
+                object_id = parts[2]
+                object_type = 'table' if parts[0] == 'choose_table_r' else 'view'
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
+                choose_permissions(bot, call, schema_id, object_id, object_type, ad_pref = ad_pref)
+
+        elif parts[0] == 'toggle_perm_r':
+            if len(parts) == 5:
+                schema_id = parts[1]
+                object_id = parts[2]
+                object_type = parts[3]
+                permission = parts[4]
+                logging.info(f"_______▲▲▲_______Вызвана функция toggle_permission с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, permission: {permission}_______▲▲▲_______")
+                toggle_permission(bot, call, schema_id, object_id, object_type, permission, ad_pref = ad_pref)
+
+        elif parts[0] == 'choose_user_r':
+            if len(parts) == 4:
+                schema_id = parts[1]
+                object_id = parts[2]
+                object_type = parts[3]
+                logging.info(f"_______▲▲▲_______Вызвана функция choose_user с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
+                choose_user(bot, call, schema_id, object_id, object_type, ad_pref = ad_pref)
+
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")

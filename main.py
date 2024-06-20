@@ -2,7 +2,7 @@ import telebot
 from telebot.types import Message
 import configparser
 import logging
-from bot_main import send_welcome, close_connection
+from bot_admin import send_welcome, close_connection
 from callback_handler import callback_inline
 from db_connection import connect_to_db
 
