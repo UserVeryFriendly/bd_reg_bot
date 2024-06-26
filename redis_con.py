@@ -1,11 +1,9 @@
 import configparser
 import redis
-import uuid
-import json
-import logging
 
 config = configparser.ConfigParser()
 config.read('D:/GH/nguk/config/global_config.cfg')
+
 
 def connect_to_redis():
     redis_params = {
@@ -15,5 +13,6 @@ def connect_to_redis():
         'password': str(config['REDIS']['password']) if config['REDIS']['password'] else None
     }
     return redis.StrictRedis(**redis_params)
+
 
 redis_client = connect_to_redis()

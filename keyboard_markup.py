@@ -1,7 +1,9 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 
-page_size=10
+
+page_size = 10
+
 
 def create_navigation_markup(object_ids, callback_prefix, schema_id, page, ad_pref=''):
     """Создаёт разметку клавиатуры с кнопками для навигации"""
@@ -13,12 +15,12 @@ def create_navigation_markup(object_ids, callback_prefix, schema_id, page, ad_pr
     items_page = list(object_ids.items())[start_idx:end_idx]
 
     buttons = [
-        InlineKeyboardButton(name, callback_data=f'{callback_prefix}{ad_pref}|{schema_id}|{object_id}') 
+        InlineKeyboardButton(name, callback_data=f'{callback_prefix}{ad_pref}|{schema_id}|{object_id}')
         for name, object_id in items_page
     ]
 
     for i in range(0, len(buttons), 2):
-        markup.add(*buttons[i:i+2])
+        markup.add(*buttons[i: i + 2])
 
     nav_buttons = []
     if page > 0:
@@ -30,8 +32,9 @@ def create_navigation_markup(object_ids, callback_prefix, schema_id, page, ad_pr
         markup.row(*nav_buttons)
 
     markup.add(InlineKeyboardButton("Назад", callback_data=f'back{ad_pref}|{schema_id}'))
-    
+
     return markup, ad_pref
+
 
 def create_user_navigation_markup(users, callback_prefix, schema_id, object_id, object_type, page, ad_pref=''):
     """Создаёт разметку клавиатуры с кнопками для навигации для выбора пользователей"""
@@ -42,12 +45,12 @@ def create_user_navigation_markup(users, callback_prefix, schema_id, object_id, 
 
     users_page = list(users.items())[start_idx:end_idx]
     buttons = [
-        InlineKeyboardButton(user_name, callback_data=f'{callback_prefix}{ad_pref}|{schema_id}|{object_id}|{user_id}|{object_type}') 
+        InlineKeyboardButton(user_name, callback_data=f'{callback_prefix}{ad_pref}|{schema_id}|{object_id}|{user_id}|{object_type}')
         for user_name, user_id in users_page
     ]
 
     for i in range(0, len(buttons), 2):
-        markup.add(*buttons[i:i+2])
+        markup.add(*buttons[i: i + 2])
 
     nav_buttons = []
     if page > 0:

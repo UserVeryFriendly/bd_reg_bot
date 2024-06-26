@@ -6,12 +6,13 @@ from redis_con import redis_client
 
 connection, cursor = connect_to_db()
 
+
 def get_objects(schema_name, object_type):
     if object_type == 'tables':
         query = f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE' ORDER BY table_name"
     elif object_type == 'views':
         query = f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema_name}' AND table_type = 'VIEW' ORDER BY table_name"
-    
+
     cursor.execute(query)
     objects = [row[0] for row in cursor.fetchall()]
     logging.info(f"Схема {schema_name} содержит {len(objects)} {object_type}.")
@@ -19,7 +20,7 @@ def get_objects(schema_name, object_type):
     object_ids = {}
     prefix = 't' if object_type == 'tables' else 'w'
     idx = 0
-    
+
     for obj in objects:
         while True:
             object_id = f'{prefix}{idx}'
@@ -33,8 +34,9 @@ def get_objects(schema_name, object_type):
             idx += 1
 
         object_ids[obj] = object_id
-    logging.info(f"Взаимодействие с Radis окончено")
+    logging.info("Взаимодействие с Radis окончено")
     return object_ids
+
 
 def list_objects(bot, message, schema_id, page, call, object_type, ad_pref=''):
     schema_name = redis_client.get(schema_id)
@@ -64,6 +66,7 @@ def list_objects(bot, message, schema_id, page, call, object_type, ad_pref=''):
     bot.edit_message_text(f"{object_type.capitalize()} в схеме {schema_name} ({page + 1}/{total_pages}):", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Показаны {object_type} в схеме {schema_name} для страницы {page}")
 
+
 def get_schemas():
     cursor.execute("""
         SELECT schema_name
@@ -72,12 +75,12 @@ def get_schemas():
             AND schema_name NOT LIKE 'pg_%'
         ORDER BY schema_name;
     """)
-    
+
     schemas = [row[0] for row in cursor.fetchall()]
 
     schema_ids = {}
     idx = 0
-    
+
     for schema in schemas:
         while True:
             schema_id = f's{idx}'
@@ -91,8 +94,9 @@ def get_schemas():
             idx += 1
 
         schema_ids[schema] = schema_id
-    logging.info(f"Взаимодействие с Radis окончено")        
+    logging.info("Взаимодействие с Radis окончено")
     return schema_ids
+
 
 def get_users():
     '''Получает список пользователей из базы данных'''

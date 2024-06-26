@@ -5,6 +5,7 @@ import configparser
 config = configparser.ConfigParser()
 config.read('D:/GH/nguk/config/global_config.cfg')
 
+
 def connect_to_db():
     db_params = {
         'host': str(config['RTK_DB']['host']),

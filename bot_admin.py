@@ -1,7 +1,7 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 import logging
 from db_connection import connect_to_db
-from db_gets import list_objects, get_schemas, get_users
+from db_gets import list_objects, get_schemas, get_users # noqa
 from keyboard_markup import create_navigation_markup, create_user_navigation_markup
 from redis_con import redis_client
 
@@ -10,6 +10,7 @@ connection, cursor = connect_to_db()
 logging.basicConfig(level=logging.INFO)
 
 # ===================== Функции взаимодействия с пользователем =====================
+
 
 def send_welcome(bot, message: Message):
     '''Отправляет приветственное сообщение'''
@@ -22,16 +23,18 @@ def send_welcome(bot, message: Message):
     bot.send_message(message.chat.id, "Добро пожаловать! Выберите нужный раздел:", reply_markup=markup)
     logging.info("Отправлено начальное сообщение с выбором функций")
 
+
 def show_admin_menu(bot, message: Message):
     schema_ids = get_schemas()
-    
+
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = [InlineKeyboardButton(schema, callback_data=f'schema|{schema_id}') for schema, schema_id in schema_ids.items()]
     markup.add(*buttons)
     markup.add(InlineKeyboardButton("Назад", callback_data='back_main'))
-    
+
     bot.edit_message_text("Выберите схему:", chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
-    logging.info(f"Показано административное меню с выбором схем")
+    logging.info("Показано административное меню с выбором схем")
+
 
 def show_schema_options(bot, message: Message, schema_id: str, call: CallbackQuery):
     '''Отображает опции для выбранной схемы'''
@@ -67,7 +70,7 @@ def choose_user(bot, call: CallbackQuery, schema_id: str, object_id: str, object
         logging.error(f"Не удалось найти имя схемы по ключу: {schema_id}.")
         bot.answer_callback_query(call.id, "Ошибка: схема не найдена.")
         return
-    
+
     object_name = redis_client.get(object_id)
     if object_name:
         object_name = object_name.decode('utf-8')
@@ -82,7 +85,7 @@ def choose_user(bot, call: CallbackQuery, schema_id: str, object_id: str, object
 
 def request_user_for_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, object_type: str, page: int = 0, ad_pref=''):
     '''Запрашивает пользователя для выдачи прав на указанный объект'''
-    
+
     schema_name = redis_client.get(schema_id)
     if schema_name:
         schema_name = schema_name.decode('utf-8')
@@ -110,7 +113,7 @@ def request_user_for_permissions(bot, call: CallbackQuery, schema_id: str, objec
     # Приведение списка пользователей к словарю
     user_ids = {user: f"u{idx}" for idx, user in enumerate(users)}
     for user_name, user_id in user_ids.items():
-        redis_client.set(user_id, user_name)        
+        redis_client.set(user_id, user_name)
 
     callback_prefix = f"grant_{object_type}_perm"
     # logging.info(f"Вызов функции create_navigation_markup в request_user_for_permissions с user_ids: {user_ids}, callback_prefix: {callback_prefix}, schema_id: {schema_id}, page: {page}")
@@ -118,6 +121,7 @@ def request_user_for_permissions(bot, call: CallbackQuery, schema_id: str, objec
 
     bot.edit_message_text(f"Выберите пользователя для выдачи прав на {object_type} {object_name} в схеме {schema_name}:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Выбор пользователя для выдачи прав на {object_type} {object_name} в схеме {schema_name}, страница {page}")
+
 
 def grant_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, user_id: str, object_type: str):
     '''Выдаёт права на указанный объект пользователю'''
@@ -199,10 +203,10 @@ def request_user_for_grant(bot, call: CallbackQuery, schema_id: str, page: int =
     for user_name, user_id in user_ids.items():
         redis_client.set(user_id, user_name)
 
-    logging.info(f"Сохранены имена пользователелей в Redis.")
+    logging.info("Сохранены имена пользователелей в Redis.")
     callback_prefix = 'choose_perm'
     # logging.info(f"Вызов функции create_navigation_markup в request_user_for_grant с user_ids: {user_ids}, callback_prefix: {callback_prefix}, schema_id: {schema_id}, page: {page}")
-    markup = create_navigation_markup(user_ids, callback_prefix, schema_id, page)
+    markup, ad_pref = create_navigation_markup(user_ids, callback_prefix, schema_id, page)
 
     bot.edit_message_text(f"Выберите пользователя для выдачи прав на схему {schema_name}:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Показан список пользователей для схемы {schema_name}, страница {page}")
@@ -249,7 +253,7 @@ def grant_usage_to_schema(bot, call: CallbackQuery, schema_id: str, user_id: str
     edit_to_welcome(bot, call.message)
 
 
-def choose_permission(bot, call: CallbackQuery, schema_id: str, user_id: str, ad_pref = ''):
+def choose_permission(bot, call: CallbackQuery, schema_id: str, user_id: str, ad_pref=''):
     '''Запрашивает тип прав для пользователя на схему'''
 
     # Получаем имя схемы по её id
@@ -275,12 +279,14 @@ def choose_permission(bot, call: CallbackQuery, schema_id: str, user_id: str, ad
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("Usage", callback_data=f'grant_permission{ad_pref}|usage|{schema_id}|{user_id}'))
     markup.add(InlineKeyboardButton("Create + Usage", callback_data=f'grant_permission{ad_pref}|create_usage|{schema_id}|{user_id}'))
-    markup.add(InlineKeyboardButton("Назад", callback_data=f'grant{ad_pref}|{schema_id}'))  
+    markup.add(InlineKeyboardButton("Назад", callback_data=f'grant{ad_pref}|{schema_id}'))
 
     bot.edit_message_text(f"Выберите тип прав для пользователя {user_name} на схему {schema_name}:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Нужен выбор типа прав для пользователя {user_name} на схему {schema_name}")
 
+
 selected_permissions = {}
+
 
 def choose_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, object_type: str, ad_pref=''):
     '''Выбор и отображение прав для указанного объекта'''
@@ -318,9 +324,10 @@ def choose_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str,
     bot.edit_message_text(f"Выберите права для {object_type} {object_name} в схеме {schema_name}:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Выбор прав для {object_type} {object_name} в схеме {schema_name}")
 
+
 def toggle_permission(bot, call: CallbackQuery, schema_id: str, object_id: str, object_type: str, permission: str, ad_pref=''):
     '''Переключение прав (добавление/удаление) для указанного объекта'''
-    
+
     schema_name = redis_client.get(schema_id)
     if schema_name:
         schema_name = schema_name.decode('utf-8')
@@ -350,17 +357,19 @@ def toggle_permission(bot, call: CallbackQuery, schema_id: str, object_id: str, 
 
     logging.info(f"Переключены права {permission} для {object_type} {object_name} в схеме {schema_name}")
 
+
 def edit_to_welcome(bot, message: Message):
     '''Возврат в главное меню с выбором схем'''
     schema_ids = get_schemas()
-    
+
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = [InlineKeyboardButton(schema, callback_data=f'schema|{schema_id}') for schema, schema_id in schema_ids.items()]
     markup.add(*buttons)
     markup.add(InlineKeyboardButton("Назад", callback_data='back_main'))
-    
+
     bot.edit_message_text("Выберите схему:", chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
-    logging.info(f"Показано административное меню с выбором схем")
+    logging.info("Показано административное меню с выбором схем")
+
 
 def delete_message(bot, message: Message):
     '''Удаление сообщения'''
@@ -369,6 +378,7 @@ def delete_message(bot, message: Message):
         logging.info(f"Удалено сообщение с id: {message.message_id}")
     except Exception as e:
         logging.error(f"Ошибка при удалении сообщения: {e}")
+
 
 def close_connection(cursor, connection):
     '''Закрытие соединения с базой данных'''

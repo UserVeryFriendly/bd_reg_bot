@@ -16,13 +16,16 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 connection, cursor = connect_to_db()
 
+
 @bot.message_handler(commands=['start'])
 def start_message(message: Message):
     send_welcome(bot, message)
 
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     callback_inline(bot, call)
+
 
 try:
     bot.polling(none_stop=True)

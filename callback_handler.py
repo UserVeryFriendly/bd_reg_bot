@@ -1,19 +1,20 @@
 from telebot.types import CallbackQuery
 import logging
 import csv
-from redis_con import redis_client
+# from redis_con import redis_client
 from bot_admin import (
-    show_admin_menu, show_schema_options, 
-    request_user_for_grant, choose_permission, 
-    grant_usage_to_schema, list_objects, 
+    show_admin_menu, show_schema_options,
+    request_user_for_grant, choose_permission,
+    grant_usage_to_schema, list_objects,
     choose_permissions, toggle_permission,
-    request_user_for_permissions, grant_permissions, 
-    delete_message, edit_to_welcome, send_welcome, choose_user 
+    request_user_for_permissions, grant_permissions,
+    delete_message, send_welcome, choose_user
 )
 from bot_access import (
     show_schema_access_options, request_access,
     request_user_for_grant_r
 )
+
 
 def load_authorized_users(filepath='authorized_users.csv'):
     authorized_user_ids = []
@@ -23,10 +24,13 @@ def load_authorized_users(filepath='authorized_users.csv'):
             authorized_user_ids.append(int(row['user_id']))
     return authorized_user_ids
 
+
 AUTHORIZED_USER_IDS = load_authorized_users()
+
 
 def is_authorized(user_id):
     return user_id in AUTHORIZED_USER_IDS
+
 
 def callback_inline(bot, call: CallbackQuery):
     try:
@@ -148,7 +152,7 @@ def callback_inline(bot, call: CallbackQuery):
 
         # Блок обработки кнопок пагинации
         elif parts[0] == 'choose_table_prev' or parts[0] == 'choose_table_next' or \
-             parts[0] == 'choose_view_prev' or parts[0] == 'choose_view_next':
+                parts[0] == 'choose_view_prev' or parts[0] == 'choose_view_next':
             logging.info(f"Обрабатываем кнопку пагинации: {call.data}")
             if len(parts) == 3:
                 schema_id = parts[1]
@@ -166,7 +170,7 @@ def callback_inline(bot, call: CallbackQuery):
                 request_user_for_grant(bot, call, schema_id, page)
 
         elif parts[0] == 'grant_view_perm_next' or parts[0] == 'grant_view_perm_prev' or \
-             parts[0] == 'grant_table_perm_next' or parts[0] == 'grant_table_perm_prev':
+                parts[0] == 'grant_table_perm_next' or parts[0] == 'grant_table_perm_prev':
             if len(parts) == 5:
                 schema_id = parts[1]
                 object_id = parts[2]
@@ -174,10 +178,10 @@ def callback_inline(bot, call: CallbackQuery):
                 object_type = parts[4]
                 logging.info(f"_______▲▲▲_______Вызвана функция request_user_for_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, page: {page}_______▲▲▲_______")
                 request_user_for_permissions(bot, call, schema_id, object_id, object_type, page)
-        
+
         # ____ЗАПРОС ПОЛЬЗОВАТЕЛЯ____
         # Во многих запросах передается ad_pref, нужен для обращения к тем же функциям, что пользуют админки, но немного разделить функционал в конце
-    
+
         elif call.data == 'request_access':
             logging.info("_______▲▲▲_______Вызвана функция request_access_______▲▲▲_______")
             request_access(bot, call.message)
@@ -187,7 +191,7 @@ def callback_inline(bot, call: CallbackQuery):
                 schema_id = parts[1]
                 logging.info(f"_______▲▲▲_______Вызвана функция show_schema_access_options с schema_id: {schema_id}_______▲▲▲_______")
                 show_schema_access_options(bot, call.message, schema_id, call)
-        
+
         elif parts[0] == 'grant_r':
             if len(parts) == 2:
                 schema_id = parts[1]
@@ -206,7 +210,7 @@ def callback_inline(bot, call: CallbackQuery):
                 schema_id = parts[1]
                 user_id = parts[2]
                 logging.info(f"_______▲▲▲_______Вызвана функция choose_permission с schema_id: {schema_id}, user_id: {user_id}_______▲▲▲_______")
-                choose_permission(bot, call, schema_id, user_id, ad_pref = ad_pref)
+                choose_permission(bot, call, schema_id, user_id, ad_pref=ad_pref)
 
         elif parts[0] == 'grant_permission_r':
             logging.info(f"Обработка grant_permission_r: parts = {parts}")
@@ -222,9 +226,9 @@ def callback_inline(bot, call: CallbackQuery):
             if len(parts) == 3:
                 schema_id = parts[1]
                 page = int(parts[2])
-                object_type = 'tables' if parts[0] == 'tables' else 'views'
+                object_type = 'tables' if parts[0] == 'tables_r' else 'views'
                 logging.info(f"_______▲▲▲_______Вызвана функция list_objects с schema_id: {schema_id}, page: {page}, object_type: {object_type}_______▲▲▲_______")
-                list_objects(bot, call.message, schema_id, page, call, object_type, ad_pref = ad_pref)
+                list_objects(bot, call.message, schema_id, page, call, object_type, ad_pref=ad_pref)
 
         elif parts[0] == 'back_r':
             if len(parts) == 2:
@@ -238,7 +242,7 @@ def callback_inline(bot, call: CallbackQuery):
                 object_id = parts[2]
                 object_type = 'table' if parts[0] == 'choose_table_r' else 'view'
                 logging.info(f"_______▲▲▲_______Вызвана функция choose_permissions с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
-                choose_permissions(bot, call, schema_id, object_id, object_type, ad_pref = ad_pref)
+                choose_permissions(bot, call, schema_id, object_id, object_type, ad_pref=ad_pref)
 
         elif parts[0] == 'toggle_perm_r':
             if len(parts) == 5:
@@ -247,7 +251,7 @@ def callback_inline(bot, call: CallbackQuery):
                 object_type = parts[3]
                 permission = parts[4]
                 logging.info(f"_______▲▲▲_______Вызвана функция toggle_permission с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}, permission: {permission}_______▲▲▲_______")
-                toggle_permission(bot, call, schema_id, object_id, object_type, permission, ad_pref = ad_pref)
+                toggle_permission(bot, call, schema_id, object_id, object_type, permission, ad_pref=ad_pref)
 
         elif parts[0] == 'choose_user_r':
             if len(parts) == 4:
@@ -255,7 +259,7 @@ def callback_inline(bot, call: CallbackQuery):
                 object_id = parts[2]
                 object_type = parts[3]
                 logging.info(f"_______▲▲▲_______Вызвана функция choose_user с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
-                choose_user(bot, call, schema_id, object_id, object_type, ad_pref = ad_pref)
+                choose_user(bot, call, schema_id, object_id, object_type, ad_pref=ad_pref)
 
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")
