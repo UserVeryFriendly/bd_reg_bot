@@ -34,7 +34,7 @@ def get_objects(schema_name, object_type):
             idx += 1
 
         object_ids[obj] = object_id
-    logging.info("Взаимодействие с Radis окончено")
+    logging.info("Взаимодействие с Redis окончено")
     return object_ids
 
 
@@ -94,7 +94,7 @@ def get_schemas():
             idx += 1
 
         schema_ids[schema] = schema_id
-    logging.info("Взаимодействие с Radis окончено")
+    logging.info("Взаимодействие с Redis окончено")
     return schema_ids
 
 

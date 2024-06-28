@@ -1,6 +1,8 @@
-from telebot.types import CallbackQuery
+from telebot.types import CallbackQuery, Message
+# from redis_con import redis_client
 import logging
 import csv
+
 # from redis_con import redis_client
 from bot_admin import (
     show_admin_menu, show_schema_options,
@@ -8,7 +10,11 @@ from bot_admin import (
     grant_usage_to_schema, list_objects,
     choose_permissions, toggle_permission,
     request_user_for_permissions, grant_permissions,
-    delete_message, send_welcome, choose_user
+    delete_message, send_welcome, choose_user,
+    save_permission_request_to_redis,
+    save_object_permission_request_to_redis,
+    show_requests_for_user, show_user_requests_menu,
+    display_request, execute_and_delete_request
 )
 from bot_access import (
     show_schema_access_options, request_access,
@@ -30,6 +36,46 @@ AUTHORIZED_USER_IDS = load_authorized_users()
 
 def is_authorized(user_id):
     return user_id in AUTHORIZED_USER_IDS
+
+
+def handle_req_command(bot, message: Message):
+    """Обрабатывает команду /req, доступную только админам."""
+    user_id = message.from_user.id
+    if not is_authorized(user_id):
+        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
+        return
+
+    # Показываем запросы с первой страницы
+    show_user_requests_menu(bot, message)
+
+
+def handle_callback_query(bot, call: CallbackQuery):
+    """Обработчик инлайн-клавиатуры."""
+    data = call.data
+    parts = call.data.split('|')
+    print(f'DATA: {data}')
+
+    if data.startswith('show_user_requests|'):
+        user_name = data.split('|')[1]
+        show_requests_for_user(bot, call, user_name)
+
+    elif data == 'exit_requests':
+        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+    elif parts[0] == 'query':
+        request_key = parts[1]
+        display_request(bot, call, request_key)
+
+    elif parts[0] == 'accept':
+        request_key = parts[1]
+        execute_and_delete_request(bot, call, request_key, accept=True)
+
+    elif parts[0] == 'decline':
+        request_key = parts[1]
+        execute_and_delete_request(bot, call, request_key, accept=False)
+
+    else:
+        callback_inline(bot, call)
 
 
 def callback_inline(bot, call: CallbackQuery):
@@ -218,9 +264,10 @@ def callback_inline(bot, call: CallbackQuery):
                 permission_type = parts[1]
                 schema_id = parts[2]
                 user_id = parts[3]
-                bot.answer_callback_query(call.id, "Запросы пока не готовы.")
+                save_permission_request_to_redis(permission_type, schema_id, user_id)
+                logging.info(f"_______▲▲▲_______Вызвана функция save_permission_request_to_redis с schema_id: {schema_id} user_id: {user_id}_______▲▲▲_______")
+                bot.answer_callback_query(call.id, "Запросы напрвален администратору")
                 request_access(bot, call.message)
-                # Не доделаный запорс!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         elif parts[0] == 'tables_r' or parts[0] == 'views_r':
             if len(parts) == 3:
@@ -261,5 +308,18 @@ def callback_inline(bot, call: CallbackQuery):
                 logging.info(f"_______▲▲▲_______Вызвана функция choose_user с schema_id: {schema_id}, object_id: {object_id}, object_type: {object_type}_______▲▲▲_______")
                 choose_user(bot, call, schema_id, object_id, object_type, ad_pref=ad_pref)
 
+        elif parts[0] == 'grant_table_perm_r' or parts[0] == 'grant_view_perm_r':
+            if len(parts) == 5:
+                schema_id = parts[1]
+                object_id = parts[2]
+                user_id = parts[3]
+                object_type = parts[4]
+                logging.info(f"_______▲▲▲_______Вызвана функция grant_permissions_r с schema_id: {schema_id}, object_id: {object_id}, user_id: {user_id}, object_type: {object_type}_______▲▲▲_______")
+                save_object_permission_request_to_redis(schema_id, object_id, user_id, object_type)
+                bot.answer_callback_query(call.id, "Запросы напрвален администратору")
+                request_access(bot, call.message)
+
+        else:
+            handle_callback_query(bot, call)
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")

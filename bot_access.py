@@ -68,7 +68,7 @@ def request_user_for_grant_r(bot, call: CallbackQuery, schema_id: str, page: int
     logging.info("Сохранены имена пользователелей в Redis.")
     callback_prefix = 'choose_perm'
     # logging.info(f"Вызов функции create_navigation_markup в request_user_for_grant с user_ids: {user_ids}, callback_prefix: {callback_prefix}, schema_id: {schema_id}, page: {page}")
-    markup = create_navigation_markup(user_ids, callback_prefix, schema_id, page, ad_pref='_r')
+    markup, ad_pref = create_navigation_markup(user_ids, callback_prefix, schema_id, page, ad_pref='_r')
 
     bot.edit_message_text(f"Выберите пользователя для выдачи прав на схему {schema_name}:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
     logging.info(f"Показан список пользователей для схемы {schema_name}, страница {page}")

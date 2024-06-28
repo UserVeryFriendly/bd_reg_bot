@@ -3,7 +3,7 @@ from telebot.types import Message
 import configparser
 import logging
 from bot_admin import send_welcome, close_connection
-from callback_handler import callback_inline
+from callback_handler import callback_inline, handle_req_command  # Импортируем новую команду
 from db_connection import connect_to_db
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,11 @@ connection, cursor = connect_to_db()
 @bot.message_handler(commands=['start'])
 def start_message(message: Message):
     send_welcome(bot, message)
+
+
+@bot.message_handler(commands=['req'])
+def req_command(message: Message):
+    handle_req_command(bot, message)
 
 
 @bot.callback_query_handler(func=lambda call: True)
