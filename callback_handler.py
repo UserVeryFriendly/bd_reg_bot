@@ -1,7 +1,6 @@
-from telebot.types import CallbackQuery, Message
+from telebot.types import CallbackQuery
 # from redis_con import redis_client
 import logging
-import csv
 
 # from redis_con import redis_client
 from bot_admin import (
@@ -14,39 +13,13 @@ from bot_admin import (
     save_permission_request_to_redis,
     save_object_permission_request_to_redis,
     show_requests_for_user, show_user_requests_menu,
-    display_request, execute_and_delete_request
+    display_request, execute_and_delete_request,
+    is_admin, is_user
 )
 from bot_access import (
     show_schema_access_options, request_access,
     request_user_for_grant_r
 )
-
-
-def load_authorized_users(filepath='authorized_users.csv'):
-    authorized_user_ids = []
-    with open(filepath, mode='r') as file:
-        csv_reader = csv.DictReader(file)
-        for row in csv_reader:
-            authorized_user_ids.append(int(row['user_id']))
-    return authorized_user_ids
-
-
-AUTHORIZED_USER_IDS = load_authorized_users()
-
-
-def is_authorized(user_id):
-    return user_id in AUTHORIZED_USER_IDS
-
-
-def handle_req_command(bot, message: Message):
-    """Обрабатывает команду /req, доступную только админам."""
-    user_id = message.from_user.id
-    if not is_authorized(user_id):
-        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
-        return
-
-    # Показываем запросы с первой страницы
-    show_user_requests_menu(bot, message)
 
 
 def handle_callback_query(bot, call: CallbackQuery):
@@ -58,9 +31,6 @@ def handle_callback_query(bot, call: CallbackQuery):
     if data.startswith('show_user_requests|'):
         user_name = data.split('|')[1]
         show_requests_for_user(bot, call, user_name)
-
-    elif data == 'exit_requests':
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
     elif parts[0] == 'query':
         request_key = parts[1]
@@ -86,20 +56,38 @@ def callback_inline(bot, call: CallbackQuery):
         logging.info(f"Получен вызов с данными: {call.data}")
         logging.info(f"Части данных: {parts}")
 
-        # ____АДМИНКА____
-        # Блок обработки главного меню
+        # Главное меню
         if call.data == 'admin_menu':
-            if is_authorized(call.from_user.id):
+            if is_admin(call.from_user.id):
                 logging.info("_______▲▲▲_______Вызвана функция show_admin_menu_______▲▲▲_______")
                 show_admin_menu(bot, call.message)
             else:
                 bot.answer_callback_query(callback_query_id=call.id, text="У вас нет прав доступа к админке.", show_alert=True)
                 logging.warning(f"Пользователь {call.from_user.id} не авторизован для доступа к админке")
+
+        elif call.data == 'request_access':
+            if is_user(call.from_user.id):
+                logging.info("_______▲▲▲_______Вызвана функция request_access_______▲▲▲_______")
+                request_access(bot, call.message)
+            else:
+                bot.answer_callback_query(callback_query_id=call.id, text="У вас нет прав доступа. Обратитесь к администратору.", show_alert=True)
+                logging.warning(f"Пользователь {call.from_user.id} не авторизован.")
+
+        elif call.data == 'user_requests':
+            if is_admin(call.from_user.id):
+                show_user_requests_menu(bot, call.message)
+            else:
+                bot.answer_callback_query(callback_query_id=call.id, text="У вас нет прав доступа к админке.", show_alert=True)
+                logging.warning(f"Пользователь {call.from_user.id} не авторизован для доступа к админке")
+
         elif call.data == 'back_main':
+            user_id = call.from_user.id
+            chat_id = call.message.chat.id
             logging.info("_______▲▲▲_______Вызвана функция delete_message и send_welcome_______▲▲▲_______")
             delete_message(bot, call.message)
-            send_welcome(bot, call.message)
+            send_welcome(bot, user_id, chat_id)
 
+        # ____АДМИНКА____
         # Блок обработки схем
         elif parts[0] == 'schema':
             if len(parts) == 2:
@@ -228,10 +216,6 @@ def callback_inline(bot, call: CallbackQuery):
         # ____ЗАПРОС ПОЛЬЗОВАТЕЛЯ____
         # Во многих запросах передается ad_pref, нужен для обращения к тем же функциям, что пользуют админки, но немного разделить функционал в конце
 
-        elif call.data == 'request_access':
-            logging.info("_______▲▲▲_______Вызвана функция request_access_______▲▲▲_______")
-            request_access(bot, call.message)
-
         elif call.data.startswith('schema_req|'):
             if len(parts) == 2:
                 schema_id = parts[1]
@@ -319,7 +303,18 @@ def callback_inline(bot, call: CallbackQuery):
                 bot.answer_callback_query(call.id, "Запросы напрвален администратору")
                 request_access(bot, call.message)
 
+        elif parts[0] == 'choose_table_r_prev' or parts[0] == 'choose_table_r_next' or \
+                parts[0] == 'choose_view_r_prev' or parts[0] == 'choose_view_r_next':
+            logging.info(f"Обрабатываем кнопку пагинации: {call.data}")
+            if len(parts) == 3:
+                schema_id = parts[1]
+                page = int(parts[2])
+                object_type = 'tables' if 'choose_table' in parts[0] else 'views'
+                logging.info(f"_______▲▲▲_______Вызвана функция list_objects с schema_id: {schema_id}, page: {page}, object_type: {object_type}_______▲▲▲_______")
+                list_objects(bot, call.message, schema_id, page, call, object_type, ad_pref=ad_pref)
+
         else:
             handle_callback_query(bot, call)
+
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")

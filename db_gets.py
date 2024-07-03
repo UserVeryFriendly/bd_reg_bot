@@ -54,7 +54,7 @@ def list_objects(bot, message, schema_id, page, call, object_type, ad_pref=''):
 
     if not object_ids:
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("Назад", callback_data=f'back|{schema_id}'))
+        markup.add(InlineKeyboardButton("Назад", callback_data=f'back{ad_pref}|{schema_id}'))
         bot.edit_message_text(f"В схеме {schema_name} нет {object_type}.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
         logging.info(f"В схеме {schema_name} нет {object_type}.")
         return

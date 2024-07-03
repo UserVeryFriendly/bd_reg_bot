@@ -1,26 +1,67 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
+from telebot import types
 import logging
 from db_connection import connect_to_db
 from db_gets import list_objects, get_schemas, get_users # noqa
 from keyboard_markup import create_navigation_markup, create_user_navigation_markup
 from redis_con import redis_client
+import csv
+
 
 connection, cursor = connect_to_db()
 
 logging.basicConfig(level=logging.INFO)
 
+
+def load_authorized_admin(filepath='authorized_admin.csv'):
+    authorized_admin_ids = []
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            authorized_admin_ids.append(int(row['user_id']))
+    return authorized_admin_ids
+
+
+def load_authorized_user(filepath='authorized_user.csv'):
+    authorized_user_ids = []
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            authorized_user_ids.append(int(row['user_id']))
+    return authorized_user_ids
+
+
+AUTHORIZED_ADMIN_IDS = load_authorized_admin()
+AUTHORIZED_USER_IDS = load_authorized_user()
+
+
+def is_admin(user_id):
+    return user_id in AUTHORIZED_ADMIN_IDS
+
+
+def is_user(user_id):
+    return user_id in AUTHORIZED_USER_IDS or is_admin(user_id)
+
 # ===================== Функции взаимодействия с пользователем =====================
 
 
-def send_welcome(bot, message: Message):
+def send_welcome(bot, user_id, chat_id):
     '''Отправляет приветственное сообщение'''
-    markup = InlineKeyboardMarkup(row_width=2)
-    buttons = [
-        InlineKeyboardButton("Администратор", callback_data='admin_menu'),
-        InlineKeyboardButton("Запрос доступа", callback_data='request_access')
-    ]
-    markup.add(*buttons)
-    bot.send_message(message.chat.id, "Добро пожаловать! Выберите нужный раздел:", reply_markup=markup)
+
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    keys = [key.decode('utf-8') for key in redis_client.keys('req*')]
+    if is_admin(user_id):
+        buttons = [
+            types.InlineKeyboardButton(text='Выдать доступ', callback_data='admin_menu'),
+            types.InlineKeyboardButton(text=f'Запросы доступа: {len(keys)}', callback_data='user_requests')
+        ]
+        keyboard.add(*buttons)
+    else:
+        print(user_id)
+
+    keyboard.add(types.InlineKeyboardButton(text='Получить доступ', callback_data='request_access'))
+
+    bot.send_message(chat_id, "Добро пожаловать! Выберите нужный раздел:", reply_markup=keyboard)
     logging.info("Отправлено начальное сообщение с выбором функций")
 
 
@@ -110,7 +151,6 @@ def request_user_for_permissions(bot, call: CallbackQuery, schema_id: str, objec
         logging.info("Нет доступных пользователей для выдачи прав.")
         return
 
-    # Приведение списка пользователей к словарю
     user_ids = {user: f"u{idx}" for idx, user in enumerate(users)}
     for user_name, user_id in user_ids.items():
         redis_client.set(user_id, user_name)
@@ -128,7 +168,6 @@ def grant_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, 
     try:
         logging.info(f"Выдача прав пользователю с id {user_id} на {object_type} с id {object_id} в схеме с id {schema_id}")
 
-        # Получаем имя схемы по её id
         schema_name = redis_client.get(schema_id)
         if schema_name:
             schema_name = schema_name.decode('utf-8')
@@ -138,7 +177,6 @@ def grant_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, 
             bot.answer_callback_query(call.id, "Ошибка: схема не найдена.")
             return
 
-        # Получаем имя объекта по его id
         object_name = redis_client.get(object_id)
         if object_name:
             object_name = object_name.decode('utf-8')
@@ -148,7 +186,6 @@ def grant_permissions(bot, call: CallbackQuery, schema_id: str, object_id: str, 
             bot.answer_callback_query(call.id, "Ошибка: объект не найден.")
             return
 
-        # Получаем имя пользователя по его id
         user_name = redis_client.get(user_id)
         if user_name:
             user_name = user_name.decode('utf-8')
@@ -198,7 +235,6 @@ def request_user_for_grant(bot, call: CallbackQuery, schema_id: str, page: int =
         logging.info("Нет доступных пользователей для выдачи прав.")
         return
 
-    # Конвертируем список пользователей в словарь и сохраняем в Redis
     user_ids = {user: f'u{idx}' for idx, user in enumerate(users)}
     for user_name, user_id in user_ids.items():
         redis_client.set(user_id, user_name)
@@ -216,7 +252,6 @@ def grant_usage_to_schema(bot, call: CallbackQuery, schema_id: str, user_id: str
     '''Выдаёт права на использование или создание объектов в схеме'''
     try:
         logging.info(f"Получение имени схемы по ключу: {schema_id} из Redis.")
-        # Получаем имя схемы по её id
         schema_name = redis_client.get(schema_id)
         if schema_name:
             schema_name = schema_name.decode('utf-8')
@@ -227,7 +262,6 @@ def grant_usage_to_schema(bot, call: CallbackQuery, schema_id: str, user_id: str
             return
 
         logging.info(f"Получение имени пользователя по ключу: {user_id} из Redis.")
-        # Получаем имя пользователя по его id
         user_name = redis_client.get(user_id)
         if user_name:
             user_name = user_name.decode('utf-8')
@@ -237,7 +271,6 @@ def grant_usage_to_schema(bot, call: CallbackQuery, schema_id: str, user_id: str
             bot.answer_callback_query(call.id, "Ошибка: пользователь не найден.")
             return
 
-        # Выполняем SQL запрос на выдачу прав
         if permission_type == 'usage':
             cursor.execute(f"GRANT USAGE ON SCHEMA {schema_name} TO {user_name}")
         elif permission_type == 'create_usage':
@@ -256,7 +289,6 @@ def grant_usage_to_schema(bot, call: CallbackQuery, schema_id: str, user_id: str
 def choose_permission(bot, call: CallbackQuery, schema_id: str, user_id: str, ad_pref=''):
     '''Запрашивает тип прав для пользователя на схему'''
 
-    # Получаем имя схемы по её id
     schema_name = redis_client.get(schema_id)
     if schema_name:
         schema_name = schema_name.decode('utf-8')
@@ -266,7 +298,6 @@ def choose_permission(bot, call: CallbackQuery, schema_id: str, user_id: str, ad
         bot.answer_callback_query(call.id, "Ошибка: схема не найдена.")
         return
 
-    # Получаем имя пользователя по его id
     user_name = redis_client.get(user_id)
     if user_name:
         user_name = user_name.decode('utf-8')
@@ -359,8 +390,8 @@ def toggle_permission(bot, call: CallbackQuery, schema_id: str, object_id: str, 
 
 
 def save_permission_request_to_redis(permission_type, schema_id, user_id):
+    '''Сохранение запроса на предоставление прав к схеме в Redis'''
     try:
-        # Получаем информацию из Redis
         schema_name = redis_client.get(schema_id)
         user_name = redis_client.get(user_id)
 
@@ -398,8 +429,8 @@ def save_permission_request_to_redis(permission_type, schema_id, user_id):
 
 
 def save_object_permission_request_to_redis(schema_id, object_id, user_id, object_type):
+    '''Сохранение запроса на предоставление прав в Redis'''
     try:
-        # Получаем информацию из Redis
         schema_name = redis_client.get(schema_id)
         user_name = redis_client.get(user_id)
         object_name = redis_client.get(object_id)
@@ -430,7 +461,6 @@ def save_object_permission_request_to_redis(schema_id, object_id, user_id, objec
 
         permissions_str = ', '.join(permissions)
 
-        # Создаем уникальный ключ
         prefix = 'req'
         idx = 0
         while True:
@@ -439,10 +469,8 @@ def save_object_permission_request_to_redis(schema_id, object_id, user_id, objec
                 break
             idx += 1
 
-        # Формируем SQL-запрос
         sql_query = f"GRANT {permissions_str} ON {object_type.upper()} {schema_name}.{object_name} TO {user_name}"
 
-        # Сохраняем SQL-запрос в Redis
         redis_client.set(req_id, sql_query)
         logging.info(f"Сохранён запрос: {sql_query} с ключом {req_id} в Redis.")
         return True
@@ -482,7 +510,6 @@ def close_connection(cursor, connection):
 
 def show_requests(bot, message, page: int = 0, query_or_message=None):
     """Показывает запросы на доступ, постранично."""
-    # Получаем все ключи запросов из Redis
     keys = [key.decode('utf-8') for key in redis_client.keys('req*')]
     keys.sort()
 
@@ -502,7 +529,7 @@ def show_requests(bot, message, page: int = 0, query_or_message=None):
         nav_buttons.append(InlineKeyboardButton("Следующая страница ➡️", callback_data=f'nav_requests|{page + 1}'))
 
     keyboard.append(nav_buttons)
-    keyboard.append([InlineKeyboardButton("Выйти", callback_data='exit_requests')])
+    keyboard.append([InlineKeyboardButton("Выйти", callback_data='back_main')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     if query_or_message:
@@ -511,9 +538,8 @@ def show_requests(bot, message, page: int = 0, query_or_message=None):
         bot.send_message(message.chat.id, f'Запросы на доступ (страница {page + 1}):', reply_markup=reply_markup)
 
 
-def show_user_requests_menu(bot, message, query_or_message=None):
+def show_user_requests_menu(bot, message):
     """Показывает меню запросов на доступ по пользователям."""
-    # Получаем все ключи запросов из Redis
     keys = [key.decode('utf-8') for key in redis_client.keys('req*')]
     users = {}
 
@@ -528,18 +554,14 @@ def show_user_requests_menu(bot, message, query_or_message=None):
     for user_name in users:
         keyboard.append([InlineKeyboardButton(text=user_name, callback_data=f'show_user_requests|{user_name}')])
 
-    keyboard.append([InlineKeyboardButton("Выйти", callback_data='exit_requests')])
+    keyboard.append([InlineKeyboardButton("Выйти", callback_data='back_main')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if query_or_message:
-        bot.edit_message_reply_markup(chat_id=query_or_message.message.chat.id, message_id=query_or_message.message.message_id, reply_markup=reply_markup)
-    else:
-        bot.send_message(message.chat.id, 'Запросы на доступ:', reply_markup=reply_markup)
+    bot.edit_message_text('Запросы на доступ:', chat_id=message.chat.id, message_id=message.message_id, reply_markup=reply_markup)
 
 
 def show_requests_for_user(bot, call, user_name):
     """Показывает запросы на доступ для конкретного пользователя."""
-    # Вместо двух отдельных списков используем один список пар (key, request_sql) для сохранения соответствия между ключами и запросами
     filtered_requests = [
         (key.decode('utf-8'), redis_client.get(key).decode('utf-8'))
         for key in redis_client.keys('req*')
@@ -547,13 +569,11 @@ def show_requests_for_user(bot, call, user_name):
     ]
 
     keyboard = []
-    # Проходим по отфильтрованному списку запросов, формируя кнопки
     for req_key, request_sql in filtered_requests:
         request_info = format_request_info(request_sql)
-        # Для каждой кнопки текст будет содержать краткую информацию о запросе, а callback_data - ключ запроса
         keyboard.append([InlineKeyboardButton(text=request_info, callback_data=f'query|{req_key}')])
 
-    keyboard.append([InlineKeyboardButton("Выйти", callback_data='exit_requests')])
+    keyboard.append([InlineKeyboardButton("Выйти", callback_data='back_main')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     bot.edit_message_text(f'Запросы для {user_name}:', chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=reply_markup)
@@ -594,7 +614,6 @@ def execute_and_delete_request(bot, call: CallbackQuery, request_key, accept):
 
     if accept:
         try:
-            # Выполнение SQL запроса
             cursor.execute(request_sql)
             connection.commit()
             response_message = "Запрос был успешно выполнен."
@@ -605,9 +624,8 @@ def execute_and_delete_request(bot, call: CallbackQuery, request_key, accept):
     else:
         response_message = "Запрос был отклонён."
 
-    # Удаление запроса из Redis в любом случае
     redis_client.delete(request_key)
     logging.info(f"Запрос {request_key} был удален из redis")
     bot.answer_callback_query(call.id, response_message)
-    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+    # bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
     show_user_requests_menu(bot, call.message)
