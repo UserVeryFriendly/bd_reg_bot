@@ -5,6 +5,7 @@ import logging
 from bot_admin import send_welcome, close_connection
 from callback_handler import callback_inline
 from db_connection import connect_to_db
+from redis_con import redis_client
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,9 +25,10 @@ def start_message(message: Message):
     send_welcome(bot, user_id, chat_id)
 
 
-# @bot.message_handler(commands=['req'])
-# def req_command(message: Message):
-#     handle_req_command(bot, message)
+@bot.message_handler(commands=['ref'])
+def ref_command(message: Message):
+    redis_client.flushall()
+    bot.send_message(message.chat.id, 'Redis очищен')
 
 
 @bot.callback_query_handler(func=lambda call: True)
