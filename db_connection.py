@@ -3,7 +3,7 @@ from psycopg2 import extras
 import configparser
 
 config = configparser.ConfigParser()
-config.read('D:/GH/nguk/config/global_config.cfg')
+config.read('config/config_file.cfg')
 
 
 def connect_to_db():

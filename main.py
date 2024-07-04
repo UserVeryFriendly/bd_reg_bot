@@ -9,9 +9,9 @@ from db_connection import connect_to_db
 logging.basicConfig(level=logging.INFO)
 
 config = configparser.ConfigParser()
-config.read('D:/GH/nguk/config/global_config.cfg')
+config.read('config/config_file.cfg')
 
-TELEGRAM_TOKEN = config['TOKEN']['test_try']  # Пример: @MyFirstTestTry_bot
+TELEGRAM_TOKEN = config['TOKEN']['bot_tok']  # Пример: @MyFirstTestTry_bot
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 connection, cursor = connect_to_db()
